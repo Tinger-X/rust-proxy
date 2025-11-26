@@ -7,6 +7,8 @@
 - ✅ 支持HTTP和HTTPS代理
 - ✅ 基于tokio的高性能异步I/O
 - ✅ 支持HTTP基本认证
+- ✅ 可配置的并发连接数限制
+- ✅ 详细的客户端连接日志追踪
 - ✅ 模块化设计
 - ✅ 命令行配置
 
@@ -44,10 +46,18 @@ cargo run --release -- --ip 127.0.0.1 --port 8080
 cargo run --release -- --username myuser --password mypass
 ```
 
+### 设置并发连接数限制
+
+限制最大并发连接数为500：
+
+```bash
+cargo run --release -- --max-connections 500
+```
+
 ### 完整参数示例
 
 ```bash
-cargo run --release -- --ip 192.168.1.100 --port 3128 --username admin --password secret
+cargo run --release -- --ip 192.168.1.100 --port 3128 --username admin --password secret --max-connections 1000
 ```
 
 ## 命令行参数
@@ -58,6 +68,7 @@ cargo run --release -- --ip 192.168.1.100 --port 3128 --username admin --passwor
 | `--port` | `-p` | 监听端口 | `24975` |
 | `--username` | `-u` | 认证用户名 | 无 |
 | `--password` | `-w` | 认证密码 | 无 |
+| `--max-connections` | `-c` | 最大并发连接数 | `1000` |
 
 ## 客户端配置
 
@@ -79,11 +90,33 @@ cargo run --release -- --ip 192.168.1.100 --port 3128 --username admin --passwor
 
 如果启用了认证，还需要提供用户名和密码。
 
+## 日志功能
+
+代理服务器提供详细的日志记录，包含客户端连接信息：
+
+```
+INFO  🔓 代理服务器: 0.0.0.0:24975 (最大连接数: 1000)
+INFO  接受新连接来自: 192.168.1.100:54321
+INFO  [192.168.1.100:54321] 收到 HTTP 请求到 example.com:80
+INFO  [192.168.1.100:54321] 成功连接到目标服务器 example.com:80
+DEBUG [192.168.1.100:54321] 客户端到目标服务器流结束
+```
+
+所有日志都包含客户端地址 `[IP:端口]`，便于追踪和调试：
+
+- 连接建立和断开
+- 认证状态
+- 请求类型和目标
+- 错误信息
+- 数据传输状态
+
 ## 安全注意事项
 
 1. 在生产环境中请使用强密码
 2. 建议在防火墙中限制对代理端口的访问
-3. 定期检查访问日志
+3. 根据服务器性能合理设置最大并发连接数
+4. 定期检查访问日志，监控异常连接
+5. 可通过日志追踪客户端行为进行安全审计
 
 ## 开发
 
@@ -102,8 +135,29 @@ src/
 运行开发版本：
 
 ```bash
-cargo run -- --ip 127.0.0.1 --port 8080 --username test --password test123
+cargo run -- --ip 127.0.0.1 --port 8080 --username test --password test123 --max-connections 100
 ```
+
+## 性能调优
+
+### 并发连接数设置
+
+- **低配置服务器**：100-500 连接
+- **中等配置服务器**：500-2000 连接
+- **高性能服务器**：2000+ 连接
+
+建议根据以下因素调整：
+- 服务器内存和CPU
+- 网络带宽
+- 预期客户端数量
+- 平均连接持续时间
+
+### 监控建议
+
+1. 监控日志中的连接数量
+2. 观察内存使用情况
+3. 检查响应延迟
+4. 跟踪拒绝连接的频率
 
 ## 许可证
 
