@@ -1,7 +1,7 @@
 use crate::auth::{check_authentication, AuthConfig};
 use crate::connection::*;
 use std::net::SocketAddr;
-use std::time::Duration;
+// use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
@@ -41,48 +41,26 @@ impl Proxy {
                 if let Some((host, port)) = parse_connect_request(&buffer[..n]).await {
                     info!("[{}] 收到 CONNECT 请求到 {}:{}", client_addr, host, port);
 
-                    // 先尝试连接目标服务器
+                    // 立即发送连接成功响应，然后异步连接目标服务器
+                    let response = b"HTTP/1.1 200 Connection Established\r\n\r\n";
+                    info!("[{}] 立即发送连接成功响应", client_addr);
+                    
+                    if let Err(e) = stream.write_all(response).await {
+                        error!("[{}] 发送连接成功响应失败: {}", client_addr, e);
+                        return;
+                    }
+                    
+                    if let Err(e) = stream.flush().await {
+                        error!("[{}] 刷新响应失败: {}", client_addr, e);
+                        return;
+                    }
+                    
+                    info!("[{}] 成功发送200 Connection Established响应，开始连接目标服务器", client_addr);
+
+                    // 异步连接目标服务器
                     match TcpStream::connect((host.as_str(), port)).await {
-                        Ok(mut target_stream) => {
+                        Ok(target_stream) => {
                             info!("[{}] 成功连接到目标服务器 {}:{}", client_addr, host, port);
-                            
-                            // 只有成功连接目标服务器后，才发送成功响应
-                            // 确保响应格式正确，以CRLF结尾
-                            let response = b"HTTP/1.1 200 Connection Established\r\n\r\n";
-                            debug!("[{}] 发送响应: {}", client_addr, String::from_utf8_lossy(response));
-                            
-                            // 使用更短的超时时间来快速检测连接问题
-                            let write_future = stream.write_all(response);
-                            match tokio::time::timeout(Duration::from_secs(5), write_future).await {
-                                Ok(Ok(())) => {
-                                    debug!("[{}] 响应写入成功", client_addr);
-                                }
-                                Ok(Err(e)) => {
-                                    error!("[{}] 发送连接成功响应失败: {}", client_addr, e);
-                                    return;
-                                }
-                                Err(_) => {
-                                    error!("[{}] 发送响应超时", client_addr);
-                                    return;
-                                }
-                            }
-                            
-                            // 确保响应被立即发送
-                            match tokio::time::timeout(Duration::from_secs(5), stream.flush()).await {
-                                Ok(Ok(())) => {
-                                    debug!("[{}] 响应刷新成功", client_addr);
-                                }
-                                Ok(Err(e)) => {
-                                    error!("[{}] 刷新响应失败: {}", client_addr, e);
-                                    return;
-                                }
-                                Err(_) => {
-                                    error!("[{}] 刷新响应超时", client_addr);
-                                    return;
-                                }
-                            }
-                            
-                            info!("[{}] 成功发送200 Connection Established响应", client_addr);
 
                             // 建立双向数据转发
                             let (mut client_reader, mut client_writer) = stream.into_split();
@@ -143,14 +121,9 @@ impl Proxy {
                         }
                         Err(e) => {
                             error!("[{}] 连接目标服务器失败 {}:{}: {}", client_addr, host, port, e);
-                            // 发送连接失败响应
-                            if let Err(send_err) = send_error_response(
-                                &mut stream,
-                                "502 Bad Gateway",
-                                &format!("无法连接到目标服务器 {}:{}", host, port),
-                            ).await {
-                                error!("[{}] 发送错误响应失败: {}", client_addr, send_err);
-                            }
+                            // 连接失败时我们无法发送错误响应，因为已经发送了200响应
+                            // 这种情况下连接会被客户端或服务端关闭
+                            info!("[{}] 目标服务器连接失败，连接将被关闭", client_addr);
                         }
                     }
                     return;
