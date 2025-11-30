@@ -41,8 +41,8 @@ impl Proxy {
                 if let Some((host, port)) = parse_connect_request(&buffer[..n]).await {
                     info!("[{}] 收到 CONNECT 请求到 {}:{}", client_addr, host, port);
 
-                    // 立即发送连接成功响应，然后异步连接目标服务器
-                    let response = b"HTTP/1.1 200 Connection Established\r\n\r\n";
+                    // 立即发送连接成功响应，使用HTTP/1.0格式以兼容网络环境
+                    let response = b"HTTP/1.0 200 Connection Established\r\n\r\n";
                     info!("[{}] 立即发送连接成功响应", client_addr);
                     
                     if let Err(e) = stream.write_all(response).await {

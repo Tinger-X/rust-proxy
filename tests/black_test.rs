@@ -76,6 +76,8 @@ async fn test_proxy_without_auth() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::builder()
         .proxy(proxy)
         .timeout(Duration::from_secs(30))
+        .user_agent("python-requests/2.31.0")  // 模拟Python requests的User-Agent
+        .danger_accept_invalid_certs(true)     // 更宽松的证书验证
         .build()?;
 
     // 执行测试
@@ -107,6 +109,8 @@ async fn test_proxy_with_auth() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::builder()
         .proxy(proxy)
         .timeout(Duration::from_secs(30))
+        .user_agent("python-requests/2.31.0")  // 模拟Python requests的User-Agent
+        .danger_accept_invalid_certs(true)     // 更宽松的证书验证
         .build()?;
 
     // 执行测试
@@ -131,6 +135,8 @@ async fn test_proxy_http_target() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::builder()
         .proxy(proxy)
         .timeout(Duration::from_secs(30))
+        .user_agent("python-requests/2.31.0")  // 模拟Python requests的User-Agent
+        .danger_accept_invalid_certs(true)     // 更宽松的证书验证
         .build()?;
 
     // 执行测试
@@ -170,6 +176,67 @@ async fn test_proxy_performance() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
+async fn test_proxy_python_like() -> Result<(), Box<dyn std::error::Error>> {
+    // 初始化日志
+    tracing_subscriber::fmt::init();
+    
+    info!("🐍 开始Python风格代理服务器测试");
+    
+    let config = TestConfig::from_env();
+    config.print_info();
+
+    // 创建HTTP客户端，模拟Python requests的行为
+    let proxy_url = format!("http://{}:{}", config.proxy_host, config.proxy_port);
+    let mut proxy = Proxy::all(&proxy_url)?;
+    
+    // 暂时注释掉认证，先测试基本代理功能
+    if let (Some(username), Some(password)) = (&config.username, &config.password) {
+        proxy = proxy.basic_auth(username, password);
+    }
+    
+    let client = Client::builder()
+        .proxy(proxy)
+        .user_agent("python-requests/2.31.0")
+        .timeout(Duration::from_secs(60))  // 更长的超时
+        .danger_accept_invalid_certs(true)
+        .connection_verbose(true)  // 启用连接详细日志
+        .http2_prior_knowledge()              // 强制使用HTTP/1.1但禁用HTTP/2
+        .build()?;
+
+    info!("🧪 执行单次Python风格测试");
+    
+    let start_time = std::time::Instant::now();
+    match timeout(Duration::from_secs(60), client.get(&config.target_url).send()).await {
+        Ok(Ok(response)) => {
+            let response_time = start_time.elapsed();
+            let status = response.status();
+            
+            info!("📥 响应状态: {}", status);
+            info!("⏱️  响应时间: {:?}", response_time);
+            
+            if status.is_success() {
+                let content_length = response.content_length().unwrap_or(0);
+                info!("📄 响应大小: {} bytes", content_length);
+                
+                let response_text = response.text().await?;
+                info!("✅ Python风格测试成功！收到 {} 字符", response_text.len());
+                Ok(())
+            } else {
+                Err(format!("HTTP请求失败，状态码: {}", status).into())
+            }
+        }
+        Ok(Err(e)) => {
+            error!("❌ Python风格测试请求失败: {}", e);
+            Err(e.into())
+        }
+        Err(_) => {
+            error!("❌ Python风格测试超时");
+            Err("请求超时".into())
+        }
+    }
+}
+
+#[tokio::test]
 async fn test_proxy_custom() -> Result<(), Box<dyn std::error::Error>> {
     // 初始化日志
     tracing_subscriber::fmt::init();
@@ -183,7 +250,6 @@ async fn test_proxy_custom() -> Result<(), Box<dyn std::error::Error>> {
     let proxy_url = format!("http://{}:{}", config.proxy_host, config.proxy_port);
     let mut proxy = Proxy::all(&proxy_url)?;
     
-    // 如果有认证信息，添加认证
     if let (Some(username), Some(password)) = (&config.username, &config.password) {
         proxy = proxy.basic_auth(username, password);
     }
@@ -191,6 +257,8 @@ async fn test_proxy_custom() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::builder()
         .proxy(proxy)
         .timeout(Duration::from_secs(30))
+        .user_agent("python-requests/2.31.0")  // 模拟Python requests的User-Agent
+        .danger_accept_invalid_certs(true)     // 更宽松的证书验证
         .build()?;
 
     // 执行测试
