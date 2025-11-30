@@ -824,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "rust_proxy"
-version = "1.0.1-alpha.1"
+version = "1.0.1-alpha.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
