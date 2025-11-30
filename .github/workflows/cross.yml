@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "v*"  # released version tags: `v*`
-      - "beta-*"  # beta version tags: `beta-*`
+      - "alpha-*"  # alpha version tags: `alpha-*`
 
 jobs:
   build:
