@@ -1,6 +1,7 @@
 use crate::auth::{check_authentication, AuthConfig};
 use crate::connection::*;
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
@@ -24,6 +25,7 @@ impl Proxy {
                 return;
             }
             Ok(n) => {
+                debug!("[{}] 收到 {} 字节数据: {}", client_addr, n, String::from_utf8_lossy(&buffer[..n]));
                 let auth_header = extract_proxy_auth(&buffer[..n]);
 
                 // 检查认证
@@ -41,15 +43,46 @@ impl Proxy {
 
                     // 先尝试连接目标服务器
                     match TcpStream::connect((host.as_str(), port)).await {
-                        Ok(target_stream) => {
+                        Ok(mut target_stream) => {
                             info!("[{}] 成功连接到目标服务器 {}:{}", client_addr, host, port);
                             
                             // 只有成功连接目标服务器后，才发送成功响应
-                            let response = "HTTP/1.1 200 Connection Established\r\n\r\n";
-                            if let Err(e) = stream.write_all(response.as_bytes()).await {
-                                error!("[{}] 发送连接成功响应失败: {}", client_addr, e);
-                                return;
+                            // 确保响应格式正确，以CRLF结尾
+                            let response = b"HTTP/1.1 200 Connection Established\r\n\r\n";
+                            debug!("[{}] 发送响应: {}", client_addr, String::from_utf8_lossy(response));
+                            
+                            // 使用更短的超时时间来快速检测连接问题
+                            let write_future = stream.write_all(response);
+                            match tokio::time::timeout(Duration::from_secs(5), write_future).await {
+                                Ok(Ok(())) => {
+                                    debug!("[{}] 响应写入成功", client_addr);
+                                }
+                                Ok(Err(e)) => {
+                                    error!("[{}] 发送连接成功响应失败: {}", client_addr, e);
+                                    return;
+                                }
+                                Err(_) => {
+                                    error!("[{}] 发送响应超时", client_addr);
+                                    return;
+                                }
                             }
+                            
+                            // 确保响应被立即发送
+                            match tokio::time::timeout(Duration::from_secs(5), stream.flush()).await {
+                                Ok(Ok(())) => {
+                                    debug!("[{}] 响应刷新成功", client_addr);
+                                }
+                                Ok(Err(e)) => {
+                                    error!("[{}] 刷新响应失败: {}", client_addr, e);
+                                    return;
+                                }
+                                Err(_) => {
+                                    error!("[{}] 刷新响应超时", client_addr);
+                                    return;
+                                }
+                            }
+                            
+                            info!("[{}] 成功发送200 Connection Established响应", client_addr);
 
                             // 建立双向数据转发
                             let (mut client_reader, mut client_writer) = stream.into_split();

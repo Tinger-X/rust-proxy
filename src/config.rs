@@ -24,10 +24,10 @@ impl Default for Config {
 
 impl Config {
     pub fn from_args() -> Self {
-        let matches = Command::new("RustProxy")
-            .version("1.0")
-            .author("RustProxy")
-            .about("一个高性能的Rust HTTP代理服务器")
+        let matches = Command::new(env!("CARGO_PKG_NAME")) // 获取Cargo.toml的name
+            .version(env!("CARGO_PKG_VERSION")) // 获取version
+            .author(env!("CARGO_PKG_AUTHORS")) // 获取authors
+            .about(env!("CARGO_PKG_DESCRIPTION"))
             .arg(
                 Arg::new("ip")
                     .short('i')
