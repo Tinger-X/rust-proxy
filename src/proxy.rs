@@ -3,7 +3,7 @@ use crate::connection::*;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 #[derive(Clone)]
 pub struct Proxy {
@@ -39,14 +39,86 @@ impl Proxy {
                 if let Some((host, port)) = parse_connect_request(&buffer[..n]).await {
                     info!("[{}] 收到 CONNECT 请求到 {}:{}", client_addr, host, port);
 
-                    let response = "HTTP/1.1 200 Connection Established\r\n\r\n";
-                    if let Err(e) = stream.write_all(response.as_bytes()).await {
-                        error!("[{}] 发送连接成功响应失败: {}", client_addr, e);
-                        return;
-                    }
+                    // 先尝试连接目标服务器
+                    match TcpStream::connect((host.as_str(), port)).await {
+                        Ok(target_stream) => {
+                            info!("[{}] 成功连接到目标服务器 {}:{}", client_addr, host, port);
+                            
+                            // 只有成功连接目标服务器后，才发送成功响应
+                            let response = "HTTP/1.1 200 Connection Established\r\n\r\n";
+                            if let Err(e) = stream.write_all(response.as_bytes()).await {
+                                error!("[{}] 发送连接成功响应失败: {}", client_addr, e);
+                                return;
+                            }
 
-                    if let Err(e) = handle_client(stream, client_addr, &host, port).await {
-                        error!("[{}] 处理客户端连接失败: {}", client_addr, e);
+                            // 建立双向数据转发
+                            let (mut client_reader, mut client_writer) = stream.into_split();
+                            let (mut target_reader, mut target_writer) = target_stream.into_split();
+
+                            let client_to_target = async {
+                                let mut buffer = [0u8; 4096];
+                                loop {
+                                    match client_reader.read(&mut buffer).await {
+                                        Ok(0) => {
+                                            debug!("[{}] 客户端到目标服务器流结束", client_addr);
+                                            break;
+                                        }
+                                        Ok(n) => {
+                                            if let Err(e) = target_writer.write_all(&buffer[..n]).await {
+                                                error!("[{}] 写入目标服务器失败: {}", client_addr, e);
+                                                break;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("[{}] 读取客户端数据失败: {}", client_addr, e);
+                                            break;
+                                        }
+                                    }
+                                }
+                            };
+
+                            let target_to_client = async {
+                                let mut buffer = [0u8; 4096];
+                                loop {
+                                    match target_reader.read(&mut buffer).await {
+                                        Ok(0) => {
+                                            debug!("[{}] 目标服务器到客户端流结束", client_addr);
+                                            break;
+                                        }
+                                        Ok(n) => {
+                                            if let Err(e) = client_writer.write_all(&buffer[..n]).await {
+                                                error!("[{}] 写入客户端失败: {}", client_addr, e);
+                                                break;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("[{}] 读取目标服务器数据失败: {}", client_addr, e);
+                                            break;
+                                        }
+                                    }
+                                }
+                            };
+
+                            tokio::select! {
+                                _ = client_to_target => {
+                                    debug!("[{}] 客户端到目标服务器连接结束", client_addr);
+                                }
+                                _ = target_to_client => {
+                                    debug!("[{}] 目标服务器到客户端连接结束", client_addr);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("[{}] 连接目标服务器失败 {}:{}: {}", client_addr, host, port, e);
+                            // 发送连接失败响应
+                            if let Err(send_err) = send_error_response(
+                                &mut stream,
+                                "502 Bad Gateway",
+                                &format!("无法连接到目标服务器 {}:{}", host, port),
+                            ).await {
+                                error!("[{}] 发送错误响应失败: {}", client_addr, send_err);
+                            }
+                        }
                     }
                     return;
                 }

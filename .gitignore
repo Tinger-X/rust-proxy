@@ -1,3 +1,6 @@
 /target
 /release
 .vscode
+
+# 测试配置文件（包含敏感信息）
+tests/.env
