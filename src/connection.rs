@@ -12,7 +12,10 @@ pub async fn handle_client(
 ) -> Result<(), Box<dyn Error>> {
     match TcpStream::connect((target_host, target_port)).await {
         Ok(target_stream) => {
-            info!("[{}] 成功连接到目标服务器 {}:{}", client_addr, target_host, target_port);
+            info!(
+                "[{}] 成功连接到目标服务器 {}:{}",
+                client_addr, target_host, target_port
+            );
 
             let (mut client_reader, mut client_writer) = client_stream.into_split();
             let (mut target_reader, mut target_writer) = target_stream.into_split();
@@ -71,7 +74,10 @@ pub async fn handle_client(
             }
         }
         Err(e) => {
-            error!("[{}] 连接目标服务器失败 {}: {}: {}", client_addr, target_host, target_port, e);
+            error!(
+                "[{}] 连接目标服务器失败 {}: {}: {}",
+                client_addr, target_host, target_port, e
+            );
             return Err(e.into());
         }
     }
@@ -140,7 +146,9 @@ pub fn extract_proxy_auth(buffer: &[u8]) -> Option<String> {
     None
 }
 
-pub async fn send_auth_required_response(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+pub async fn send_auth_required_response(
+    stream: &mut TcpStream,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let response = "HTTP/1.0 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"RustProxy\"\r\n\r\n";
     stream.write_all(response.as_bytes()).await?;
     Ok(())
@@ -150,7 +158,7 @@ pub async fn send_error_response(
     stream: &mut TcpStream,
     status: &str,
     message: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let response = format!(
         "HTTP/1.0 {}\r\nContent-Type: text/plain\r\n\r\n{}\r\n",
         status, message

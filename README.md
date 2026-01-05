@@ -1,12 +1,15 @@
 # RustProxy
 
-一个高性能的HTTP/HTTPS代理服务器，使用Rust编写。
+一个高性能的HTTP/HTTPS/WebSocket代理服务器，使用Rust编写。
 
 ## 功能特性
 
 - ✅ 支持HTTP和HTTPS代理
+- ✅ 支持HTTP/1.0、HTTP/1.1和HTTP/2协议
+- ✅ 支持WebSocket代理
 - ✅ 基于tokio的高性能异步I/O
 - ✅ 支持HTTP基本认证
+- ✅ 显式代理模式（目标服务器看到代理IP，保护客户端隐私）
 - ✅ 可配置的并发连接数限制
 - ✅ 详细的客户端连接日志追踪
 - ✅ 模块化设计
@@ -124,12 +127,21 @@ DEBUG [192.168.1.100:54321] 客户端到目标服务器流结束
 
 ```
 src/
-├── main.rs          # 主程序入口
-├── lib.rs           # 库入口
-├── config.rs        # 配置管理
-├── auth.rs          # 认证模块
-├── proxy.rs         # 代理核心逻辑
-└── connection.rs    # 连接处理
+├── main.rs               # 主程序入口
+├── lib.rs                # 库入口
+├── config.rs             # 配置管理
+├── auth.rs               # 认证模块
+├── proxy.rs              # 代理核心逻辑
+├── connection.rs         # 连接处理
+├── parser/              # 协议解析
+│   ├── mod.rs
+│   └── detector.rs      # 协议检测
+└── handlers/            # 协议处理器
+    ├── mod.rs
+    ├── backend.rs       # 后端连接器
+    ├── http1.rs        # HTTP/1.x处理
+    ├── http2.rs        # HTTP/2处理
+    └── websocket.rs    # WebSocket处理
 ```
 
 运行开发版本：
@@ -158,6 +170,70 @@ cargo run -- --ip 127.0.0.1 --port 8080 --username test --password test123 --max
 2. 观察内存使用情况
 3. 检查响应延迟
 4. 跟踪拒绝连接的频率
+
+## 协议支持详情
+
+### HTTP/1.0 和 HTTP/1.1
+- 完整支持GET、POST、PUT、DELETE等方法
+- 支持Keep-Alive连接
+- 自动解析Host头和路径
+- 支持代理认证
+
+### HTTP/2
+- 支持HTTP/2 clear-text模式
+- 自动检测HTTP/2 preface
+- 流复用和帧转发
+- 通过CONNECT隧道支持HTTP/2 over TLS
+
+### WebSocket
+- 自动检测WebSocket升级请求
+- 支持ws://和wss://协议
+- 透明转发WebSocket帧
+- 处理Ping/Pong心跳
+
+### 显式代理特性
+- 所有协议使用显式代理模式
+- 目标服务器只能看到代理服务器IP
+- 不泄露客户端真实IP地址
+- 支持标准Proxy-Authorization认证
+
+## 性能特性
+
+- 异步非阻塞I/O (tokio)
+- 高效的内存使用
+- 可配置的并发连接数限制
+- 零拷贝数据转发
+- 大缓冲区支持(8KB)
+
+## 测试
+
+运行多协议测试脚本：
+
+```bash
+./test_protocols.sh
+```
+
+或手动测试：
+
+```bash
+# 测试HTTP/1.1
+curl -x http://username:password@localhost:8080 http://httpbin.org/ip
+
+# 测试HTTPS (CONNECT隧道)
+curl -x http://username:password@localhost:8080 https://httpbin.org/ip
+
+# 测试WebSocket
+wscat -c ws://localhost:8080 -H "Proxy-Authorization: Basic <base64>"
+```
+
+## 开发路线图
+
+- [ ] HTTP/3 (QUIC) 支持
+- [ ] 连接池优化
+- [ ] 请求/响应日志记录
+- [ ] 访问控制列表(ACL)
+- [ ] 速率限制
+- [ ] 监控指标导出
 
 ## 许可证
 

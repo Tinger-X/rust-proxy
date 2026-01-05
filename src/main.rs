@@ -10,7 +10,7 @@ use tracing::{error, info};
 use tracing_subscriber;
 
 #[tokio::main]
-async fn std_main() -> Result<(), Box<dyn Error>> {
+async fn std_main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // 初始化日志
     tracing_subscriber::fmt::init();
 
@@ -34,9 +34,15 @@ async fn std_main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(addr).await?;
 
     if config.auth_enabled() {
-        info!("🔒 代理服务器: {}:{} (最大连接数: {})", config.ip, config.port, config.max_connections);
+        info!(
+            "🔒 代理服务器: {}:{} (最大连接数: {})",
+            config.ip, config.port, config.max_connections
+        );
     } else {
-        info!("🔓 代理服务器: {}:{} (最大连接数: {})", config.ip, config.port, config.max_connections);
+        info!(
+            "🔓 代理服务器: {}:{} (最大连接数: {})",
+            config.ip, config.port, config.max_connections
+        );
     }
 
     // 创建信号量来限制并发连接数
