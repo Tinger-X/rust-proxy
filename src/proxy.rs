@@ -200,8 +200,14 @@ impl Proxy {
                     }
                     Ok(Err(e)) => {
                         error!("[{}] 发送连接成功响应失败: {}", client_addr_str, e);
-                        // 分析错误类型，对于某些常见的Linux网络错误，尝试继续
                         error!("[{}] 响应发送错误类型: {:?}", client_addr_str, e.kind());
+                        
+                        // 对于 ConnectionReset 错误，客户端已经关闭连接，不需要继续转发
+                        if let std::io::ErrorKind::ConnectionReset = e.kind() {
+                            info!("[{}] 客户端已重置连接，终止隧道处理", client_addr_str);
+                            return;
+                        }
+                        
                         info!("[{}] 响应发送失败，但尝试继续透明转发", client_addr_str);
                     }
                     Err(_) => {
