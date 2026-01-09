@@ -26,7 +26,13 @@ pub async fn handle_http1(
         Some(req) => req,
         None => {
             error!("[{}] 无法解析HTTP请求", client_addr);
-            send_error_response(&mut client_stream, "400 Bad Request", "无效的HTTP请求").await?;
+            // 确定响应的HTTP版本
+            let version = if buffer.windows(8).any(|w| w == b"HTTP/1.0") {
+                "HTTP/1.0"
+            } else {
+                "HTTP/1.1"
+            };
+            send_error_response(&mut client_stream, "400 Bad Request", "无效的HTTP请求", version).await?;
             return Ok(());
         }
     };
@@ -63,10 +69,17 @@ pub async fn handle_http1(
                 "[{}] 连接目标服务器失败 {}:{}: {}",
                 client_addr, request.host, request.port, e
             );
+            // 确定响应的HTTP版本
+            let version = if buffer.windows(8).any(|w| w == b"HTTP/1.0") {
+                "HTTP/1.0"
+            } else {
+                "HTTP/1.1"
+            };
             send_error_response(
                 &mut client_stream,
                 "502 Bad Gateway",
                 &format!("无法连接到 {}:{}", request.host, request.port),
+                version,
             )
             .await?;
             Ok(())

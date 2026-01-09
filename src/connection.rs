@@ -148,8 +148,9 @@ pub fn extract_proxy_auth(buffer: &[u8]) -> Option<String> {
 
 pub async fn send_auth_required_response(
     stream: &mut TcpStream,
+    version: String,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let response = "HTTP/1.0 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"RustProxy\"\r\n\r\n";
+    let response = format!("{} 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"RustProxy\"\r\n\r\n", version);
     stream.write_all(response.as_bytes()).await?;
     Ok(())
 }
@@ -158,10 +159,11 @@ pub async fn send_error_response(
     stream: &mut TcpStream,
     status: &str,
     message: &str,
+    version: &str,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let response = format!(
-        "HTTP/1.0 {}\r\nContent-Type: text/plain\r\n\r\n{}\r\n",
-        status, message
+        "{} {}\r\nContent-Type: text/plain\r\n\r\n{}\r\n",
+        version, status, message
     );
     stream.write_all(response.as_bytes()).await?;
     Ok(())

@@ -12,9 +12,14 @@ pub enum ProtocolType {
         key: String,
         host: String,
         port: u16,
+        version: String,
     },
     /// CONNECT 隧道 (HTTPS)
-    ConnectTunnel { host: String, port: u16 },
+    ConnectTunnel { 
+        host: String, 
+        port: u16, 
+        version: String 
+    },
     /// 未知协议
     Unknown,
 }
@@ -33,14 +38,25 @@ pub fn detect_protocol(buffer: &[u8]) -> ProtocolType {
         // 检查是否是CONNECT请求
         if method == "CONNECT" {
             if let Some((host, port)) = parse_connect_target(buffer) {
-                return ProtocolType::ConnectTunnel { host, port };
+                let version = parse_http_version(buffer).unwrap_or_else(|| "HTTP/1.1".to_string());
+                return ProtocolType::ConnectTunnel { 
+                    host, 
+                    port, 
+                    version 
+                };
             }
         }
 
         // 检查是否是WebSocket升级请求
         if is_websocket_upgrade(buffer) {
             if let Some((host, port, key)) = parse_websocket_details(buffer) {
-                return ProtocolType::WebSocketUpgrade { key, host, port };
+                let version = parse_http_version(buffer).unwrap_or_else(|| "HTTP/1.1".to_string());
+                return ProtocolType::WebSocketUpgrade { 
+                    key, 
+                    host, 
+                    port, 
+                    version 
+                };
             }
         }
 
@@ -180,7 +196,8 @@ mod tests {
             detect_protocol(buffer),
             ProtocolType::ConnectTunnel {
                 host: "example.com".to_string(),
-                port: 443
+                port: 443,
+                version: "HTTP/1.1".to_string()
             }
         );
     }
@@ -194,10 +211,11 @@ mod tests {
             Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n";
 
         match detect_protocol(buffer) {
-            ProtocolType::WebSocketUpgrade { key, host, port } => {
+            ProtocolType::WebSocketUpgrade { key, host, port, version } => {
                 assert_eq!(key, "dGhlIHNhbXBsZSBub25jZQ==");
                 assert_eq!(host, "example.com");
                 assert_eq!(port, 80);
+                assert_eq!(version, "HTTP/1.1".to_string());
             }
             _ => panic!("Expected WebSocket upgrade"),
         }

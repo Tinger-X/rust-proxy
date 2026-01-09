@@ -9,6 +9,7 @@ pub struct WebSocketUpgrade {
     pub host: String,
     pub port: u16,
     pub path: String,
+    pub version: String,
 }
 
 /// 处理WebSocket连接升级和代理
@@ -44,7 +45,7 @@ pub async fn handle_websocket(
 
             if let Err(e) = target_stream.write_all(upgrade_request.as_bytes()).await {
                 error!("[{}] 发送WebSocket升级请求失败: {}", client_addr, e);
-                send_websocket_error(&mut client_stream, "502 Bad Gateway").await?;
+                send_websocket_error(&mut client_stream, "502 Bad Gateway", &upgrade.version).await?;
                 return Err(e.into());
             }
 
@@ -55,13 +56,13 @@ pub async fn handle_websocket(
             let n = match target_stream.read(&mut response_buffer).await {
                 Ok(0) => {
                     error!("[{}] 目标服务器关闭连接", client_addr);
-                    send_websocket_error(&mut client_stream, "502 Bad Gateway").await?;
+                    send_websocket_error(&mut client_stream, "502 Bad Gateway", &upgrade.version).await?;
                     return Ok(());
                 }
                 Ok(n) => n,
                 Err(e) => {
                     error!("[{}] 读取目标响应失败: {}", client_addr, e);
-                    send_websocket_error(&mut client_stream, "502 Bad Gateway").await?;
+                    send_websocket_error(&mut client_stream, "502 Bad Gateway", &upgrade.version).await?;
                     return Err(e.into());
                 }
             };
@@ -165,7 +166,7 @@ pub async fn handle_websocket(
                 "[{}] WebSocket连接目标失败 {}:{}: {}",
                 client_addr, upgrade.host, upgrade.port, e
             );
-            send_websocket_error(&mut client_stream, "502 Bad Gateway").await?;
+            send_websocket_error(&mut client_stream, "502 Bad Gateway", &upgrade.version).await?;
             Err(format!("Connection failed: {}", e).into())
         }
     }
@@ -182,13 +183,20 @@ pub fn parse_websocket_upgrade(
         return Ok(None);
     }
 
-    // 解析请求行获取路径
+    // 解析请求行获取路径和HTTP版本
     let first_line = lines[0].trim();
     let parts: Vec<&str> = first_line.split_whitespace().collect();
     if parts.len() < 2 {
         return Ok(None);
     }
     let path = parts[1].to_string();
+
+    // 解析HTTP版本
+    let version = if parts.len() >= 3 {
+        parts[2].to_string()
+    } else {
+        "HTTP/1.1".to_string()
+    };
 
     // 提取必需的头部
     let mut key = None;
@@ -225,6 +233,7 @@ pub fn parse_websocket_upgrade(
         host,
         port,
         path,
+        version,
     }))
 }
 
@@ -232,13 +241,14 @@ pub fn parse_websocket_upgrade(
 async fn send_websocket_error(
     stream: &mut TcpStream,
     status: &str,
+    version: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let response = format!(
-        "HTTP/1.1 {}\r\n\
+        "{} {}\r\n\
          Content-Type: text/plain\r\n\
          Connection: close\r\n\
          \r\n",
-        status
+        version, status
     );
     stream.write_all(response.as_bytes()).await?;
     Ok(())

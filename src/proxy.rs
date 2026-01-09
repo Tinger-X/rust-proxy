@@ -29,26 +29,35 @@ impl Proxy {
                 let client_addr_str = client_addr.to_string();
                 debug!("[{}] 收到 {} 字节数据", client_addr_str, n);
 
+                // 检测协议类型
+                let protocol = crate::parser::detector::detect_protocol(&buffer[..n]);
+                info!("[{}] 检测到协议: {:?}", client_addr_str, protocol);
+
                 // 提取认证头
                 let auth_header = extract_proxy_auth(&buffer[..n]);
 
                 // 检查认证
                 if !check_authentication(&self.auth_config, auth_header.as_deref()) {
                     info!("[{}] 认证失败，需要代理认证", client_addr_str);
-                    if let Err(e) = send_auth_required_response(&mut stream).await {
+                    // 确定响应的HTTP版本
+                    let response_version = match protocol {
+                        ProtocolType::Http10 => "HTTP/1.0".to_string(),
+                        ProtocolType::Http11 => "HTTP/1.1".to_string(),
+                        ProtocolType::ConnectTunnel { version, .. } => version,
+                        ProtocolType::WebSocketUpgrade { version, .. } => version,
+                        // 对于其他协议，使用HTTP/1.1作为默认版本
+                        _ => "HTTP/1.1".to_string(),
+                    };
+                    if let Err(e) = send_auth_required_response(&mut stream, response_version).await {
                         error!("[{}] 发送认证要求响应失败: {}", client_addr_str, e);
                     }
                     return;
                 }
 
-                // 检测协议类型
-                let protocol = crate::parser::detector::detect_protocol(&buffer[..n]);
-                info!("[{}] 检测到协议: {:?}", client_addr_str, protocol);
-
                 match protocol {
                     // CONNECT隧道（HTTPS/HTTP/2 over TLS）
-                    ProtocolType::ConnectTunnel { host, port } => {
-                        Proxy::handle_connect_tunnel(stream, client_addr_str.clone(), host, port)
+                    ProtocolType::ConnectTunnel { host, port, version } => {
+                        Proxy::handle_connect_tunnel(stream, client_addr_str.clone(), host, port, version)
                             .await;
                     }
 
@@ -100,7 +109,7 @@ impl Proxy {
                         } else {
                             error!("[{}] HTTP/2请求缺少Host头", client_addr_str);
                             let _ =
-                                send_error_response(&mut stream, "400 Bad Request", "缺少Host头")
+                                send_error_response(&mut stream, "400 Bad Request", "缺少Host头", "HTTP/2")
                                     .await;
                         }
                     }
@@ -110,6 +119,7 @@ impl Proxy {
                         key: _,
                         host: _,
                         port: _,
+                        version,
                     } => match crate::handlers::websocket::parse_websocket_upgrade(&buffer[..n]) {
                         Ok(Some(upgrade)) => {
                             if let Err(e) = handlers::websocket::handle_websocket(
@@ -128,6 +138,7 @@ impl Proxy {
                                 &mut stream,
                                 "400 Bad Request",
                                 "无效的WebSocket升级请求",
+                                version.as_str(),
                             )
                             .await;
                         }
@@ -137,6 +148,7 @@ impl Proxy {
                                 &mut stream,
                                 "400 Bad Request",
                                 "解析WebSocket请求失败",
+                                version.as_str(),
                             )
                             .await;
                         }
@@ -146,7 +158,7 @@ impl Proxy {
                     ProtocolType::Unknown => {
                         error!("[{}] 无法识别协议类型", client_addr_str);
                         let _ =
-                            send_error_response(&mut stream, "400 Bad Request", "无法识别的协议")
+                            send_error_response(&mut stream, "400 Bad Request", "无法识别的协议", "HTTP/1.1")
                                 .await;
                     }
                 }
@@ -163,6 +175,7 @@ impl Proxy {
         client_addr: String,
         host: String,
         port: u16,
+        version: String,
     ) {
         let client_addr_str = client_addr.to_string();
         info!("[{}] CONNECT隧道到 {}:{}", client_addr_str, host, port);
@@ -175,9 +188,9 @@ impl Proxy {
                     client_addr_str, host, port
                 );
 
-                // 发送连接成功响应
-                let response = b"HTTP/1.0 200 Connection Established\r\n\r\n";
-                if let Err(e) = stream.write_all(response).await {
+                // 发送连接成功响应，使用与请求相同的HTTP版本
+                let response = format!("{} 200 Connection Established\r\n\r\n", version);
+                if let Err(e) = stream.write_all(response.as_bytes()).await {
                     error!("[{}] 发送连接成功响应失败: {}", client_addr_str, e);
                     return;
                 }
