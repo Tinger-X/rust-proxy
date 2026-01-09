@@ -167,27 +167,27 @@ impl Proxy {
         let client_addr_str = client_addr.to_string();
         info!("[{}] CONNECT隧道到 {}:{}", client_addr_str, host, port);
 
-        // 立即发送连接成功响应
-        let response = b"HTTP/1.0 200 Connection Established\r\n\r\n";
-        if let Err(e) = stream.write_all(response).await {
-            error!("[{}] 发送连接成功响应失败: {}", client_addr_str, e);
-            return;
-        }
-
-        if let Err(e) = stream.flush().await {
-            error!("[{}] 刷新响应失败: {}", client_addr_str, e);
-            return;
-        }
-
-        info!("[{}] 连接建立成功，开始透明转发", client_addr_str);
-
-        // 连接到目标服务器
+        // 先连接到目标服务器，成功后再发送响应
         match TcpStream::connect((host.as_str(), port)).await {
             Ok(target_stream) => {
                 info!(
                     "[{}] 成功连接到目标服务器 {}:{}",
                     client_addr_str, host, port
                 );
+
+                // 发送连接成功响应
+                let response = b"HTTP/1.0 200 Connection Established\r\n\r\n";
+                if let Err(e) = stream.write_all(response).await {
+                    error!("[{}] 发送连接成功响应失败: {}", client_addr_str, e);
+                    return;
+                }
+
+                if let Err(e) = stream.flush().await {
+                    error!("[{}] 刷新响应失败: {}", client_addr_str, e);
+                    return;
+                }
+
+                info!("[{}] 连接建立成功，开始透明转发", client_addr_str);
 
                 // 建立双向透明转发
                 let (mut client_reader, mut client_writer) = stream.into_split();
