@@ -28,7 +28,7 @@ async fn std_main() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
 
     // 创建代理服务器
-    let proxy = Proxy::new(auth_config);
+    let proxy = Proxy::new(auth_config, config.clone());
     let addr = SocketAddr::new(config.ip, config.port);
     // 绑定监听端口
     let listener = TcpListener::bind(addr).await?;
