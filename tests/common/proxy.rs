@@ -29,7 +29,7 @@ impl TestProxy {
             None
         };
 
-        let proxy = Proxy::new(auth_config, rust_proxy::config::Config::default());
+        let proxy = Proxy::new(auth_config);
         let addr = config.address();
         let listener = TcpListener::bind(&addr)
             .await

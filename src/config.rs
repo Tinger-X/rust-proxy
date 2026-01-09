@@ -8,9 +8,6 @@ pub struct Config {
     pub username: Option<String>,
     pub password: Option<String>,
     pub max_connections: usize,
-    pub connect_timeout: u64,
-    pub read_timeout: u64,
-    pub write_timeout: u64,
 }
 
 impl Default for Config {
@@ -21,9 +18,6 @@ impl Default for Config {
             username: None,
             password: None,
             max_connections: 1000,
-            connect_timeout: 30,
-            read_timeout: 60,
-            write_timeout: 30,
         }
     }
 }
@@ -74,33 +68,6 @@ impl Config {
                     .value_parser(clap::value_parser!(usize))
                     .default_value("1000"),
             )
-            .arg(
-                Arg::new("connect_timeout")
-                    .short('t')
-                    .long("connect-timeout")
-                    .value_name("CONNECT_TIMEOUT")
-                    .help("连接超时时间（秒）")
-                    .value_parser(clap::value_parser!(u64))
-                    .default_value("30"),
-            )
-            .arg(
-                Arg::new("read_timeout")
-                    .short('r')
-                    .long("read-timeout")
-                    .value_name("READ_TIMEOUT")
-                    .help("读取超时时间（秒）")
-                    .value_parser(clap::value_parser!(u64))
-                    .default_value("60"),
-            )
-            .arg(
-                Arg::new("write_timeout")
-                    .short('W')
-                    .long("write-timeout")
-                    .value_name("WRITE_TIMEOUT")
-                    .help("写入超时时间（秒）")
-                    .value_parser(clap::value_parser!(u64))
-                    .default_value("30"),
-            )
             .get_matches();
 
         let ip = matches
@@ -113,9 +80,6 @@ impl Config {
         let username = matches.get_one::<String>("username").cloned();
         let password = matches.get_one::<String>("password").cloned();
         let max_connections = *matches.get_one::<usize>("max_connections").unwrap_or(&1000);
-        let connect_timeout = *matches.get_one::<u64>("connect_timeout").unwrap_or(&30);
-        let read_timeout = *matches.get_one::<u64>("read_timeout").unwrap_or(&60);
-        let write_timeout = *matches.get_one::<u64>("write_timeout").unwrap_or(&30);
 
         Config {
             ip,
@@ -123,9 +87,6 @@ impl Config {
             username,
             password,
             max_connections,
-            connect_timeout,
-            read_timeout,
-            write_timeout,
         }
     }
 
