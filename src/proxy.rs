@@ -199,13 +199,13 @@ impl Proxy {
                         info!("[{}] 连接建立成功，开始透明转发", client_addr_str);
                     }
                     Ok(Err(e)) => {
-                        debug!("[{}] 发送连接成功响应失败: {}", client_addr_str, e);
+                        error!("[{}] 发送连接成功响应失败: {}", client_addr_str, e);
                         // 分析错误类型，对于某些常见的Linux网络错误，尝试继续
-                        debug!("[{}] 响应发送错误类型: {:?}", client_addr_str, e.kind());
+                        error!("[{}] 响应发送错误类型: {:?}", client_addr_str, e.kind());
                         info!("[{}] 响应发送失败，但尝试继续透明转发", client_addr_str);
                     }
                     Err(_) => {
-                        debug!("[{}] 发送连接成功响应超时", client_addr_str);
+                        error!("[{}] 发送连接成功响应超时", client_addr_str);
                         info!("[{}] 响应发送超时，但尝试继续透明转发", client_addr_str);
                     }
                 }
