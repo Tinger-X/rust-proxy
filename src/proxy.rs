@@ -171,22 +171,6 @@ impl Proxy {
         let client_addr_str = client_addr.to_string();
         info!("[{}] CONNECT隧道到 {}:{}", client_addr_str, host, port);
 
-        // 设置TCP套接字选项以提高Linux系统上的稳定性
-        #[cfg(unix)]
-        {
-            use std::os::unix::io::AsRawFd;
-            use nix::sys::socket::setsockopt;
-            use nix::sys::socket::sockopt::TcpNoDelay;
-            use nix::sys::socket::sockopt::SoKeepAlive;
-            
-            if let Ok(fd) = stream.as_raw_fd().try_into() {
-                // 禁用Nagle算法，减少延迟（对代理服务器有利）
-                let _ = setsockopt(fd, TcpNoDelay, &true);
-                // 启用TCP keepalive，检测无效连接
-                let _ = setsockopt(fd, SoKeepAlive, &true);
-            }
-        }
-
         // 设置连接超时
         let connect_timeout = Duration::from_secs(self.config.connect_timeout);
         
@@ -194,19 +178,6 @@ impl Proxy {
         match timeout(connect_timeout, TcpStream::connect((host.as_str(), port))).await {
             Ok(Ok(mut target_stream)) => {
                 // 为目标连接也设置TCP选项
-                #[cfg(unix)]
-                {
-                    use std::os::unix::io::AsRawFd;
-                    use nix::sys::socket::setsockopt;
-                    use nix::sys::socket::sockopt::TcpNoDelay;
-                    use nix::sys::socket::sockopt::SoKeepAlive;
-                    
-                    if let Ok(fd) = target_stream.as_raw_fd().try_into() {
-                        let _ = setsockopt(fd, TcpNoDelay, &true);
-                        let _ = setsockopt(fd, SoKeepAlive, &true);
-                    }
-                }
-
                 info!(
                     "[{}] 成功连接到目标服务器 {}:{}",
                     client_addr_str, host, port
